@@ -26,6 +26,7 @@
 use std::fmt::{Debug, Display};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -89,6 +90,14 @@ MinerSlotID {
     /// Block pushed from the miner
     BlockPushed = 1
 });
+
+impl MinerSlotID {
+    /// Return the u32 slot id for messages of this type from a given miner's
+    /// slot range in the .miners contract
+    pub fn get_slot_for_miner(&self, miner_range: &Range<u32>) -> u32 {
+        miner_range.start.saturating_add(self.to_u8().into())
+    }
+}
 
 impl MessageSlotIDTrait for MessageSlotID {
     fn stacker_db_contract(&self, mainnet: bool, reward_cycle: u64) -> QualifiedContractIdentifier {
@@ -1239,11 +1248,26 @@ mod test {
     }
 
     #[test]
+    fn get_slot_for_miner() {
+        let miner_range = std::ops::Range { start: 7, end: 10 };
+        assert_eq!(
+            MinerSlotID::BlockProposal.get_slot_for_miner(&miner_range),
+            7,
+            "Block proposals should be in the first slot assigned to a miner"
+        );
+        assert_eq!(
+            MinerSlotID::BlockPushed.get_slot_for_miner(&miner_range),
+            8,
+            "Block pushes should be in the second slot assigned to a miner"
+        );
+    }
+
+    #[test]
     fn test_backwards_compatibility() {
         let block_rejected_hex = "010100000050426c6f636b206973206e6f7420612074656e7572652d737461727420626c6f636b2c20616e642068617320616e20756e7265636f676e697a65642074656e75726520636f6e73656e7375732068617368000691f95f84b7045f7dce7757052caa986ef042cb58f7df5031a3b5b5d0e3dda63e80000000006fb349212e1a1af1a3c712878d5159b5ec14636adb6f70be00a6da4ad4f88a9934d8a9abb229620dd8e0f225d63401e36c64817fb29e6c05591dcbe95c512df3";
-        let block_rejected_bytes = hex_bytes(&block_rejected_hex).unwrap();
+        let block_rejected_bytes = hex_bytes(block_rejected_hex).unwrap();
         let block_accepted_hex = "010011717149677c2ac97d15ae5954f7a716f10100b9cb81a2bf27551b2f2e54ef19001c694f8134c5c90f2f2bcd330e9f423204884f001b5df0050f36a2c4ff79dd93522bb2ae395ea87de4964886447507c18374b7a46ee2e371e9bf332f0706a3e8";
-        let block_accepted_bytes = hex_bytes(&block_accepted_hex).unwrap();
+        let block_accepted_bytes = hex_bytes(block_accepted_hex).unwrap();
         let block_rejected = read_next::<SignerMessage, _>(&mut &block_rejected_bytes[..])
             .expect("Failed to deserialize BlockRejection");
         let block_accepted = read_next::<SignerMessage, _>(&mut &block_accepted_bytes[..])
@@ -1277,9 +1301,9 @@ mod test {
     #[test]
     fn test_block_response_metadata() {
         let block_rejected_hex = "010100000050426c6f636b206973206e6f7420612074656e7572652d737461727420626c6f636b2c20616e642068617320616e20756e7265636f676e697a65642074656e75726520636f6e73656e7375732068617368000691f95f84b7045f7dce7757052caa986ef042cb58f7df5031a3b5b5d0e3dda63e80000000006fb349212e1a1af1a3c712878d5159b5ec14636adb6f70be00a6da4ad4f88a9934d8a9abb229620dd8e0f225d63401e36c64817fb29e6c05591dcbe95c512df30000000b48656c6c6f20776f726c64";
-        let block_rejected_bytes = hex_bytes(&block_rejected_hex).unwrap();
+        let block_rejected_bytes = hex_bytes(block_rejected_hex).unwrap();
         let block_accepted_hex = "010011717149677c2ac97d15ae5954f7a716f10100b9cb81a2bf27551b2f2e54ef19001c694f8134c5c90f2f2bcd330e9f423204884f001b5df0050f36a2c4ff79dd93522bb2ae395ea87de4964886447507c18374b7a46ee2e371e9bf332f0706a3e80000000b48656c6c6f20776f726c64";
-        let block_accepted_bytes = hex_bytes(&block_accepted_hex).unwrap();
+        let block_accepted_bytes = hex_bytes(block_accepted_hex).unwrap();
         let block_rejected = read_next::<SignerMessage, _>(&mut &block_rejected_bytes[..])
             .expect("Failed to deserialize BlockRejection");
         let block_accepted = read_next::<SignerMessage, _>(&mut &block_accepted_bytes[..])
