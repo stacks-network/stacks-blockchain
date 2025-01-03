@@ -181,7 +181,7 @@ impl ConfigFile {
             mode: Some("xenon".to_string()),
             rpc_port: Some(18332),
             peer_port: Some(18333),
-            peer_host: Some("bitcoind.testnet.stacks.co".to_string()),
+            peer_host: Some("0.0.0.0".to_string()),
             magic_bytes: Some("T2".into()),
             ..BurnchainConfigFile::default()
         };
@@ -227,9 +227,9 @@ impl ConfigFile {
             mode: Some("mainnet".to_string()),
             rpc_port: Some(8332),
             peer_port: Some(8333),
-            peer_host: Some("bitcoin.blockstack.com".to_string()),
-            username: Some("blockstack".to_string()),
-            password: Some("blockstacksystem".to_string()),
+            peer_host: Some("0.0.0.0".to_string()),
+            username: Some("bitcoin".to_string()),
+            password: Some("bitcoin".to_string()),
             magic_bytes: Some("X2".to_string()),
             ..BurnchainConfigFile::default()
         };
@@ -1500,21 +1500,15 @@ impl BurnchainConfigFile {
                 .unwrap_or(default_burnchain_config.commit_anchor_block_within),
             peer_host: match self.peer_host.as_ref() {
                 Some(peer_host) => {
-                    // Using std::net::LookupHost would be preferable, but it's
-                    // unfortunately unstable at this point.
-                    // https://doc.rust-lang.org/1.6.0/std/net/struct.LookupHost.html
-                    let mut sock_addrs = format!("{peer_host}:1")
+                    format!("{}:1", &peer_host)
                         .to_socket_addrs()
-                        .map_err(|e| format!("Invalid burnchain.peer_host: {e}"))?;
-                    let sock_addr = match sock_addrs.next() {
-                        Some(addr) => addr,
-                        None => {
-                            return Err(format!(
-                                "No IP address could be queried for '{peer_host}'"
-                            ));
-                        }
-                    };
-                    format!("{}", sock_addr.ip())
+                        .map_err(|e| format!("Invalid burnchain.peer_host: {}", &e))?
+                        .next()
+                        .is_none()
+                        .then(|| {
+                            return format!("No IP address could be queried for '{}'", &peer_host);
+                        });
+                    peer_host.clone()
                 }
                 None => default_burnchain_config.peer_host,
             },
