@@ -142,8 +142,8 @@ pub fn make_block(
         .put_indexed_all(
             &StacksBlockId::new(&parent.0, &parent.1),
             &new_index_hash,
-            &vec![],
-            &vec![],
+            &[],
+            &[],
         )
         .unwrap();
 
@@ -1266,7 +1266,7 @@ fn test_iterate_candidates_concurrent_write_lock() {
     assert_eq!(all_addr_nonces.len(), expected_addr_nonces.len());
 
     for (addr, nonce) in all_addr_nonces {
-        assert!(expected_addr_nonces.get(&addr).is_some());
+        assert!(expected_addr_nonces.contains_key(&addr));
         assert_eq!(nonce, 24);
     }
 }
@@ -1666,7 +1666,7 @@ fn mempool_db_test_rbf() {
         key_encoding: TransactionPublicKeyEncoding::Uncompressed,
         nonce: 123,
         tx_fee: 456,
-        signature: MessageSignature::from_raw(&vec![0xff; 65]),
+        signature: MessageSignature::from_raw(&[0xff; 65]),
     });
     let stx_address = StacksAddress {
         version: 1,

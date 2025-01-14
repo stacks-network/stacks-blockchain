@@ -670,7 +670,7 @@ impl StacksChainState {
     ) -> Result<(), Error> {
         let block_path =
             StacksChainState::make_block_dir(blocks_path, consensus_hash, &block_hash)?;
-        StacksChainState::atomic_file_write(&block_path, &vec![])
+        StacksChainState::atomic_file_write(&block_path, &[])
     }
 
     /// Mark a block in the filesystem as invalid
@@ -1459,9 +1459,9 @@ impl StacksChainState {
             seq,
             seq,
         )
-        .and_then(|list_opt| match list_opt {
-            Some(mut list) => Ok(list.pop()),
-            None => Ok(None),
+        .map(|list_opt| match list_opt {
+            Some(mut list) => list.pop(),
+            None => None,
         })
     }
 
@@ -2561,7 +2561,7 @@ impl StacksChainState {
                 StacksChainState::free_block(blocks_path, consensus_hash, anchored_block_hash);
             }
             Err(_) => {
-                StacksChainState::atomic_file_write(&block_path, &vec![])?;
+                StacksChainState::atomic_file_write(&block_path, &[])?;
             }
         }
 
@@ -2787,7 +2787,7 @@ impl StacksChainState {
         min_seq: u16,
     ) -> Result<bool, Error> {
         StacksChainState::read_i64s(&self.db(), "SELECT processed FROM staging_microblocks WHERE index_block_hash = ?1 AND sequence >= ?2 LIMIT 1", &[&parent_index_block_hash, &min_seq])
-            .and_then(|processed| Ok(!processed.is_empty()))
+            .map(|processed| !processed.is_empty())
     }
 
     /// Do we have a given microblock as a descendant of a given anchored block?
@@ -2800,7 +2800,7 @@ impl StacksChainState {
         microblock_hash: &BlockHeaderHash,
     ) -> Result<bool, Error> {
         StacksChainState::read_i64s(&self.db(), "SELECT processed FROM staging_microblocks WHERE index_block_hash = ?1 AND microblock_hash = ?2 LIMIT 1", &[parent_index_block_hash, microblock_hash])
-            .and_then(|processed| Ok(!processed.is_empty()))
+            .map(|processed| !processed.is_empty())
     }
 
     /// Do we have any microblock available to serve in any capacity, given its parent anchored block's
@@ -2815,7 +2815,7 @@ impl StacksChainState {
             "SELECT processed FROM staging_microblocks WHERE index_block_hash = ?1 LIMIT 1",
             &[&parent_index_block_hash],
         )
-        .and_then(|processed| Ok(!processed.is_empty()))
+        .map(|processed| !processed.is_empty())
     }
 
     /// Given an index block hash, get the consensus hash and block hash
@@ -3586,7 +3586,7 @@ impl StacksChainState {
         sort_ic: &SortitionDBConn,
         snapshot: &BlockSnapshot,
         block: &StacksBlock,
-        microblocks: &Vec<StacksMicroblock>,
+        microblocks: &[StacksMicroblock],
     ) -> Result<(), Error> {
         let parent_sn = match SortitionDB::get_block_snapshot_for_winning_stacks_block(
             sort_ic,
@@ -4046,6 +4046,7 @@ impl StacksChainState {
     /// Return (applied?, receipts)
     pub fn process_epoch_transition(
         clarity_tx: &mut ClarityTx,
+        burn_dbconn: &dyn BurnStateDB,
         chain_tip_burn_header_height: u32,
     ) -> Result<(bool, Vec<StacksTransactionReceipt>), Error> {
         // is this stacks block the first of a new epoch?
@@ -4106,13 +4107,28 @@ impl StacksChainState {
                         current_epoch = StacksEpochId::Epoch30;
                     }
                     StacksEpochId::Epoch30 => {
-                        // no special initialization is needed, since only the coinbase emission
-                        // schedule is changing.
+                        receipts.append(&mut clarity_tx.block.initialize_epoch_3_1()?);
                         current_epoch = StacksEpochId::Epoch31;
                     }
                     StacksEpochId::Epoch31 => {
                         panic!("No defined transition from Epoch31 forward")
                     }
+                }
+
+                if current_epoch > StacksEpochId::Epoch2_05 {
+                    // clarity tx should now have the current epoch
+                    assert_eq!(
+                        clarity_tx.block.get_epoch(),
+                        current_epoch,
+                        "FATAL: clarity_tx does not have the current epoch"
+                    );
+
+                    // clarity DB should now have the current epoch
+                    assert_eq!(
+                        clarity_tx.block.get_clarity_db_epoch_version(burn_dbconn)?,
+                        current_epoch,
+                        "FATAL: clarity DB does not report the current epoch"
+                    );
                 }
             }
         }
@@ -5050,7 +5066,7 @@ impl StacksChainState {
         burn_tip_height: u32,
         parent_consensus_hash: ConsensusHash,
         parent_header_hash: BlockHeaderHash,
-        parent_microblocks: &Vec<StacksMicroblock>,
+        parent_microblocks: &[StacksMicroblock],
         mainnet: bool,
         miner_id_opt: Option<usize>,
     ) -> Result<SetupBlockResult<'a, 'b>, Error> {
@@ -5200,7 +5216,11 @@ impl StacksChainState {
 
         // is this stacks block the first of a new epoch?
         let (applied_epoch_transition, mut tx_receipts) =
-            StacksChainState::process_epoch_transition(&mut clarity_tx, burn_tip_height)?;
+            StacksChainState::process_epoch_transition(
+                &mut clarity_tx,
+                burn_dbconn,
+                burn_tip_height,
+            )?;
 
         debug!(
             "Setup block: Processed epoch transition at {}/{}",
@@ -5403,7 +5423,7 @@ impl StacksChainState {
         chain_tip_burn_header_timestamp: u64,
         block: &StacksBlock,
         block_size: u64,
-        microblocks: &Vec<StacksMicroblock>, // parent microblocks
+        microblocks: &[StacksMicroblock], // parent microblocks
         burnchain_commit_burn: u64,
         burnchain_sortition_burn: u64,
         affirmation_weight: u64,
@@ -7204,7 +7224,7 @@ pub mod test {
     }
 
     fn resign_microblocks(
-        microblocks: &mut Vec<StacksMicroblock>,
+        microblocks: &mut [StacksMicroblock],
         privk: &StacksPrivateKey,
     ) -> BlockHeaderHash {
         for i in 0..microblocks.len() {
@@ -8617,7 +8637,7 @@ pub mod test {
             let res = StacksChainState::validate_parent_microblock_stream(
                 &block.header,
                 &child_block_header_empty,
-                &vec![],
+                &[],
                 true,
             );
             assert!(res.is_some());
@@ -8906,14 +8926,14 @@ pub mod test {
         block_3.header.parent_block = block_2.block_hash();
         block_4.header.parent_block = block_3.block_hash();
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),
             ConsensusHash([5u8; 20]),
         ];
 
-        let parent_consensus_hashes = vec![
+        let parent_consensus_hashes = [
             FIRST_BURNCHAIN_CONSENSUS_HASH,
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
@@ -9042,14 +9062,14 @@ pub mod test {
         block_3.header.parent_block = block_2.block_hash();
         block_4.header.parent_block = block_3.block_hash();
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),
             ConsensusHash([5u8; 20]),
         ];
 
-        let parent_consensus_hashes = vec![
+        let parent_consensus_hashes = [
             FIRST_BURNCHAIN_CONSENSUS_HASH,
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
@@ -9187,14 +9207,14 @@ pub mod test {
         block_3.header.parent_block = block_1.block_hash();
         block_4.header.parent_block = block_3.block_hash();
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),
             ConsensusHash([5u8; 20]),
         ];
 
-        let parent_consensus_hashes = vec![
+        let parent_consensus_hashes = [
             FIRST_BURNCHAIN_CONSENSUS_HASH,
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
@@ -9379,7 +9399,7 @@ pub mod test {
         block_4.header.parent_microblock = mblocks[2].block_hash();
         block_4.header.parent_microblock_sequence = mblocks[2].header.sequence;
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),
@@ -9510,14 +9530,14 @@ pub mod test {
             microblocks.push(mblocks);
         }
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),
             ConsensusHash([5u8; 20]),
         ];
 
-        let parent_consensus_hashes = vec![
+        let parent_consensus_hashes = [
             ConsensusHash([1u8; 20]),
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
@@ -9931,9 +9951,9 @@ pub mod test {
         }
     }
 
-    pub fn decode_microblock_stream(mblock_bytes: &Vec<u8>) -> Vec<StacksMicroblock> {
+    pub fn decode_microblock_stream(mblock_bytes: &[u8]) -> Vec<StacksMicroblock> {
         // decode stream
-        let mut mblock_ptr = mblock_bytes.as_slice();
+        let mut mblock_ptr = mblock_bytes;
         let mut mblocks = vec![];
         loop {
             test_debug!("decoded {}", mblocks.len());
@@ -10630,7 +10650,7 @@ pub mod test {
         block_3.header.parent_microblock = mblocks_2[2].block_hash();
         block_3.header.parent_microblock_sequence = mblocks_2[2].header.sequence;
 
-        let consensus_hashes = vec![
+        let consensus_hashes = [
             ConsensusHash([2u8; 20]),
             ConsensusHash([3u8; 20]),
             ConsensusHash([4u8; 20]),

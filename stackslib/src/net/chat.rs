@@ -1181,7 +1181,8 @@ impl ConversationP2P {
         &mut self,
         stacker_db_data: &StackerDBHandshakeData,
     ) {
-        self.db_smart_contracts = stacker_db_data.smart_contracts.clone();
+        self.db_smart_contracts
+            .clone_from(&stacker_db_data.smart_contracts);
     }
 
     /// Forget about this peer's stacker DB replication state
@@ -2138,7 +2139,7 @@ impl ConversationP2P {
             );
             return self
                 .reply_nack(local_peer, chain_view, preamble, NackErrorCodes::Throttled)
-                .and_then(|handle| Ok(Some(handle)));
+                .map(|handle| Some(handle));
         }
         Ok(None)
     }
@@ -2176,7 +2177,7 @@ impl ConversationP2P {
             debug!("{:?}: Neighbor {:?} exceeded max microblocks-push bandwidth of {} bytes/sec (currently at {})", self, &self.to_neighbor_key(), self.connection.options.max_microblocks_push_bandwidth, self.stats.get_microblocks_push_bandwidth());
             return self
                 .reply_nack(local_peer, chain_view, preamble, NackErrorCodes::Throttled)
-                .and_then(|handle| Ok(Some(handle)));
+                .map(|handle| Some(handle));
         }
         Ok(None)
     }
@@ -2213,7 +2214,7 @@ impl ConversationP2P {
             debug!("{:?}: Neighbor {:?} exceeded max transaction-push bandwidth of {} bytes/sec (currently at {})", self, &self.to_neighbor_key(), self.connection.options.max_transaction_push_bandwidth, self.stats.get_transaction_push_bandwidth());
             return self
                 .reply_nack(local_peer, chain_view, preamble, NackErrorCodes::Throttled)
-                .and_then(|handle| Ok(Some(handle)));
+                .map(|handle| Some(handle));
         }
         Ok(None)
     }
@@ -2251,7 +2252,7 @@ impl ConversationP2P {
             debug!("{:?}: Neighbor {:?} exceeded max stackerdb-push bandwidth of {} bytes/sec (currently at {})", self, &self.to_neighbor_key(), self.connection.options.max_stackerdb_push_bandwidth, self.stats.get_stackerdb_push_bandwidth());
             return self
                 .reply_nack(local_peer, chain_view, preamble, NackErrorCodes::Throttled)
-                .and_then(|handle| Ok(Some(handle)));
+                .map(|handle| Some(handle));
         }
 
         Ok(None)
@@ -2290,7 +2291,7 @@ impl ConversationP2P {
             debug!("{:?}: Neighbor {:?} exceeded max Nakamoto block push bandwidth of {} bytes/sec (currently at {})", self, &self.to_neighbor_key(), self.connection.options.max_nakamoto_block_push_bandwidth, self.stats.get_nakamoto_block_push_bandwidth());
             return self
                 .reply_nack(local_peer, chain_view, preamble, NackErrorCodes::Throttled)
-                .and_then(|handle| Ok(Some(handle)));
+                .map(|handle| Some(handle));
         }
 
         Ok(None)
@@ -2568,7 +2569,7 @@ impl ConversationP2P {
             StacksMessageType::HandshakeAccept(ref data) => {
                 debug!("{:?}: Got HandshakeAccept", &self);
                 self.handle_handshake_accept(network.get_chain_view(), &msg.preamble, data, None)
-                    .and_then(|_| Ok(None))
+                    .map(|_| None)
             }
             StacksMessageType::StackerDBHandshakeAccept(ref data, ref db_data) => {
                 debug!("{:?}: Got StackerDBHandshakeAccept", &self);
@@ -2578,7 +2579,7 @@ impl ConversationP2P {
                     data,
                     Some(db_data),
                 )
-                .and_then(|_| Ok(None))
+                .map(|_| None)
             }
             StacksMessageType::Ping(_) => {
                 debug!("{:?}: Got Ping", &self);
@@ -2652,7 +2653,7 @@ impl ConversationP2P {
                         data,
                         None,
                     )
-                    .and_then(|_| Ok(None))
+                    .map(|_| None)
                 } else {
                     debug!("{:?}: Unsolicited unauthenticated HandshakeAccept", &self);
 
@@ -2670,7 +2671,7 @@ impl ConversationP2P {
                         data,
                         Some(db_data),
                     )
-                    .and_then(|_| Ok(None))
+                    .map(|_| None)
                 } else {
                     debug!(
                         "{:?}: Unsolicited unauthenticated StackerDBHandshakeAccept",
@@ -2851,8 +2852,8 @@ impl ConversationP2P {
             match dns_client.poll_lookup(&dns_request.host, dns_request.port) {
                 Ok(query_result_opt) => {
                     // just take one of the addresses, if there are any
-                    self.data_ip = query_result_opt
-                        .map(|query_result| match query_result.result {
+                    self.data_ip =
+                        query_result_opt.and_then(|query_result| match query_result.result {
                             Ok(mut ips) => ips.pop(),
                             Err(e) => {
                                 warn!(
@@ -2864,8 +2865,7 @@ impl ConversationP2P {
                                 self.dns_deadline = u128::MAX;
                                 None
                             }
-                        })
-                        .flatten();
+                        });
                     if let Some(ip) = self.data_ip.as_ref() {
                         debug!("{}: Resolved data URL {} to {}", &self, &self.data_url, &ip);
                     } else {
@@ -3106,8 +3106,8 @@ mod test {
         network_id: u32,
         key_expires: u64,
         data_url: UrlString,
-        asn4_entries: &Vec<ASEntry4>,
-        initial_neighbors: &Vec<Neighbor>,
+        asn4_entries: &[ASEntry4],
+        initial_neighbors: &[Neighbor],
         services: u16,
     ) -> (PeerDB, SortitionDB, StackerDBs, PoxId, StacksChainState) {
         let test_path = format!("/tmp/stacks-test-databases-{}", testname);
@@ -3139,9 +3139,7 @@ mod test {
             data_url.clone(),
             &asn4_entries,
             Some(&initial_neighbors),
-            &vec![
-                QualifiedContractIdentifier::parse("SP000000000000000000002Q6VF78.sbtc").unwrap(),
-            ],
+            &[QualifiedContractIdentifier::parse("SP000000000000000000002Q6VF78.sbtc").unwrap()],
         )
         .unwrap();
         let sortdb = SortitionDB::connect(
@@ -3287,8 +3285,8 @@ mod test {
                 .append_chain_tip_snapshot(
                     &prev_snapshot,
                     &next_snapshot,
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     None,
                     None,
                     None,
@@ -3410,8 +3408,8 @@ mod test {
                     0x9abcdef0,
                     12350,
                     "http://peer1.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     peer_1_services,
                 );
             let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -3421,8 +3419,8 @@ mod test {
                     0x9abcdef0,
                     12351,
                     "http://peer2.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     peer_2_services,
                 );
 
@@ -3737,8 +3735,8 @@ mod test {
                     0x9abcdef0,
                     12350,
                     "http://peer1.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
             let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -3748,8 +3746,8 @@ mod test {
                     0x9abcdef0,
                     12351,
                     "http://peer2.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
 
@@ -3917,8 +3915,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -3928,8 +3926,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4062,8 +4060,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4073,8 +4071,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4206,8 +4204,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4217,8 +4215,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4363,8 +4361,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4374,8 +4372,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4562,8 +4560,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4573,8 +4571,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4706,8 +4704,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4717,8 +4715,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -4882,8 +4880,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -4893,8 +4891,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -5109,8 +5107,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -5120,8 +5118,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -5259,8 +5257,8 @@ mod test {
                 0x9abcdef0,
                 12350,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -5270,8 +5268,8 @@ mod test {
                 0x9abcdef0,
                 12351,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -5430,8 +5428,8 @@ mod test {
                     0x9abcdef0,
                     12350,
                     "http://peer1.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
             let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -5441,8 +5439,8 @@ mod test {
                     0x9abcdef0,
                     12351,
                     "http://peer2.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
 
@@ -5709,8 +5707,8 @@ mod test {
                     0x9abcdef0,
                     12350,
                     "http://peer1.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
             let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -5720,8 +5718,8 @@ mod test {
                     0x9abcdef0,
                     12351,
                     "http://peer2.com".into(),
-                    &vec![],
-                    &vec![],
+                    &[],
+                    &[],
                     DEFAULT_SERVICES,
                 );
 
@@ -5989,8 +5987,8 @@ mod test {
                 0x9abcdef0,
                 12352,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
         let (mut peerdb_2, mut sortdb_2, stackerdbs_2, pox_id_2, mut chainstate_2) =
@@ -6000,8 +5998,8 @@ mod test {
                 0x9abcdef0,
                 12353,
                 "http://peer2.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -6124,8 +6122,8 @@ mod test {
                 0x9abcdef0,
                 12352,
                 "http://peer1.com".into(),
-                &vec![],
-                &vec![],
+                &[],
+                &[],
                 DEFAULT_SERVICES,
             );
 
@@ -6792,8 +6790,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
@@ -6910,8 +6908,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
@@ -6977,8 +6975,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
@@ -7111,8 +7109,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
@@ -7245,8 +7243,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
@@ -7379,8 +7377,8 @@ mod test {
             0x9abcdef0,
             12352,
             "http://peer1.com".into(),
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             DEFAULT_SERVICES,
         );
 
