@@ -2273,6 +2273,8 @@ mod test {
         let server = Server::http(format!("127.0.0.1:{port}")).unwrap();
         thread::spawn(move || {
             let mut attempt = 0;
+            // This exists to only keep request from being dropped
+            #[allow(clippy::collection_is_never_read)]
             let mut _request_holder = None;
             while let Ok(request) = server.recv() {
                 attempt += 1;
@@ -2338,6 +2340,8 @@ mod test {
         let server = Server::http(format!("127.0.0.1:{port}")).unwrap();
         thread::spawn(move || {
             let mut attempt = 0;
+            // This exists to only keep request from being dropped
+            #[allow(clippy::collection_is_never_read)]
             let mut _request_holder = None;
             while let Ok(mut request) = server.recv() {
                 attempt += 1;
