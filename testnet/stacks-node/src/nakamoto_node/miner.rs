@@ -478,7 +478,7 @@ impl BlockMinerThread {
             *last_block_rejected = false;
 
             new_block.header.signer_signature = signer_signature;
-            if let Err(e) = self.broadcast(new_block.clone(), reward_set, &stackerdbs) {
+            if let Err(e) = self.broadcast(new_block.clone(), reward_set, stackerdbs) {
                 warn!("Error accepting own block: {e:?}. Will try mining again.");
                 return Ok(());
             } else {

@@ -10453,10 +10453,10 @@ fn clarity_cost_spend_down() {
         let mut submitted_txs = vec![];
         for _nmb_tx in 0..nmb_txs_per_signer {
             for sender_sk in sender_sks.iter() {
-                let sender_nonce = get_and_increment_nonce(&sender_sk, &mut sender_nonces);
+                let sender_nonce = get_and_increment_nonce(sender_sk, &mut sender_nonces);
                 // Fill up the mempool with contract calls
                 let contract_tx = make_contract_call(
-                    &sender_sk,
+                    sender_sk,
                     sender_nonce,
                     tx_fee,
                     naka_conf.burnchain.chain_id,
